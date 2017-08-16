@@ -1,0 +1,46 @@
+// Available here: https://code.earthengine.google.com/02525d85cfe00a6e9b84bc697cf3a3fb
+
+var cloudDensity = function(img) {
+  // Calculate the cloud score for the supplied L8 image
+
+  var rescale = function(img, exp, thresholds) {
+    // A helper to apply an expression and linearly rescale the output.
+    return img.expression(exp, {img: img})
+        .subtract(thresholds[0]).divide(thresholds[1] - thresholds[0]);
+  };
+
+  var score = ee.Image(1.0);
+  // Clouds are reasonably bright in the blue band.
+  score = score.min(rescale(img, 'img.B2', [0.1, 0.3]));
+
+  // Clouds are reasonably bright in all visible bands.
+  score = score.min(rescale(img, 'img.B4 + img.B3 + img.B2', [0.2, 0.8]));
+
+  // Clouds are reasonably bright in all infrared bands.
+  score = score.min(rescale(img, 'img.B5 + img.B6 + img.B7', [0.3, 0.8]));
+
+  // Clouds are reasonably cool in temperature.
+  score = score.min(rescale(img, 'img.B10', [300, 290]));
+
+  // However, clouds are not snow.
+  var ndsi = img.normalizedDifference(['B3', 'B6']);
+
+  return(score.min(rescale(ndsi, 'img', [0.8, 0.6])));
+};
+
+
+function cloudMask(img, cloud_scores, thresh) {
+  // Accepts an raw L8 image, a derived image of cloud scores corresponding 
+  // to each pixel and a threshold to screen out excessively cloudy pixels.
+  // Returns the original image, with clouds masked.
+  var binary = cloud_scores.lte(thresh);
+  return(img.mask(binary));
+}
+
+
+function makeCloudFree(img) {
+  // Convenient wrapper `cloudMask` function that will only accept an L8
+  // image and returns the cloud-masked image with the threshold set at 0.5
+  var clouds = cloudDensity(img);
+  return(cloudMask(img, clouds, 0.5));
+}
